@@ -3,6 +3,7 @@ import time
 import jwt
 import asyncio
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from aiosmtpd.controller import Controller
 from email.parser import BytesParser
 from email.policy import default
@@ -15,12 +16,8 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 900       # 15 minutes
 REFRESH_TOKEN_EXPIRE = 7 * 86400  # 7 days
 
-from flask import Flask
-from flask_cors import CORS  # <--- add this line
-
 app = Flask(__name__)
-CORS(app)  # <--- allow all origins (for dev)
-
+CORS(app)  # Allow all origins for development
 
 # === DATABASE ===
 db_conn = sqlite3.connect("email_server.db", check_same_thread=False)
@@ -216,14 +213,37 @@ def get_emails(username):
         ]
     })
 
+# === EMAIL BODY HELPER ===
+def get_email_body(email_message):
+    if email_message.is_multipart():
+        # Loop through parts and get the plain text one
+        for part in email_message.walk():
+            content_type = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition"))
+            if content_type == "text/plain" and "attachment" not in content_disposition:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        # If no plain text part found, fallback to first part
+        first_part = email_message.get_payload(0)
+        payload = first_part.get_payload(decode=True)
+        if payload:
+            return payload.decode(first_part.get_content_charset() or "utf-8", errors="replace")
+        return ""
+    else:
+        payload = email_message.get_payload(decode=True)
+        if payload:
+            return payload.decode(email_message.get_content_charset() or "utf-8", errors="replace")
+        return ""
+
 # === SMTP SERVER ===
 class EmailHandler:
     async def handle_DATA(self, server, session, envelope):
-        email = await self.parse_email(envelope.content)
-        sender = email.get("From")
-        receiver = email.get("To")
-        subject = email.get("Subject")
-        body = email.get_payload()
+        email_message = await self.parse_email(envelope.content)
+        sender = email_message.get("From")
+        receiver = email_message.get("To")
+        subject = email_message.get("Subject")
+        body = get_email_body(email_message)
 
         print(f"[SMTP] {sender} -> {receiver}")
         try:

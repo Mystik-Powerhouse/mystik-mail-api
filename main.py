@@ -106,7 +106,7 @@ def register():
 # === LOGIN ===
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.json
+    data = request.get_json(force=True)
     email = data.get("email", "").strip().lower()
     password = data.get("password", "").strip()
 

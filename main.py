@@ -15,7 +15,12 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 900       # 15 minutes
 REFRESH_TOKEN_EXPIRE = 7 * 86400  # 7 days
 
+from flask import Flask
+from flask_cors import CORS  # <--- add this line
+
 app = Flask(__name__)
+CORS(app)  # <--- allow all origins (for dev)
+
 
 # === DATABASE ===
 db_conn = sqlite3.connect("email_server.db", check_same_thread=False)

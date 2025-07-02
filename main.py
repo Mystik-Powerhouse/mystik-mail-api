@@ -22,7 +22,7 @@ REFRESH_TOKEN_EXPIRE = 7 * 86400  # 7 days
 SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
 SMTP_USERNAME = "apikey"  # DO NOT change this
-SMTP_PASSWORD = "xsmtpsib-b2b637350e263fa4b0a2b7fe1d73b06408137337236c6962f91f95e324e085b6-60SYRX9FzTMPCKqJ"  # 🔐 paste your Brevo SMTP key here
+SMTP_PASSWORD = "xsmtpsib-b2b637350e263fa4b0a2b7fe1d73b06408137337236c6962f91f95e324e085b6-Y6jDGQz9fvE1paqU"  # 🔐 paste your Brevo SMTP key here
 FROM_NAME = "Mystik Mailer"
 
 

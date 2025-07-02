@@ -9,12 +9,22 @@ from email.parser import BytesParser
 from email.policy import default
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 
 # === CONFIG ===
 JWT_SECRET = "supersecretkey"  # Change this!
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE = 900       # 15 minutes
 REFRESH_TOKEN_EXPIRE = 7 * 86400  # 7 days
+SMTP_SERVER = "smtp-relay.brevo.com"
+SMTP_PORT = 587
+SMTP_USERNAME = "apikey"  # DO NOT change this
+SMTP_PASSWORD = "xsmtpsib-b2b637350e263fa4b0a2b7fe1d73b06408137337236c6962f91f95e324e085b6-60SYRX9FzTMPCKqJ"  # 🔐 paste your Brevo SMTP key here
+FROM_NAME = "Mystik Mailer"
+
 
 app = Flask(__name__)
 CORS(app)  # Allow all origins for development
@@ -82,6 +92,20 @@ def token_required(f):
 
         return f(*args, **kwargs)
     return wrapper
+
+
+def send_email_brevo(to_email, subject, body, from_email):
+    msg = MIMEMultipart()
+    msg["From"] = f"{FROM_NAME} <{from_email}>"
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        server.send_message(msg)
+
 
 # === REGISTER ===
 @app.route("/register", methods=["POST"])
@@ -187,12 +211,21 @@ def send_email():
     if not receiver:
         return jsonify({"error": "Receiver is required"}), 400
 
+    # Save to DB
     db_conn.execute(
         "INSERT INTO emails (sender, receiver, subject, body, time) VALUES (?, ?, ?, ?, ?)",
         (sender, receiver, subject, body, int(time.time() * 1000))
     )
     db_conn.commit()
-    return jsonify({"message": "Email sent successfully"}), 200
+
+    # Send actual email via Brevo
+    try:
+        send_email_brevo(receiver, subject, body, sender)
+    except Exception as e:
+        return jsonify({"error": f"Failed to send via SMTP: {str(e)}"}), 500
+
+    return jsonify({"message": "Email sent and stored successfully"}), 200
+
 
 # === FETCH EMAILS ===
 @app.route("/emails/<username>", methods=["GET"])

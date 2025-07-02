@@ -29,6 +29,8 @@ SMTP_PORT = 587
 SMTP_USERNAME = "apikey"  # DO NOT change this
 FROM_NAME = "Mystik Mailer"
 
+print("SMTP_USERNAME:", SMTP_USERNAME)
+print("SMTP_PASSWORD length:", len(SMTP_PASSWORD) if SMTP_PASSWORD else "None")
 
 app = Flask(__name__)
 CORS(app)  # Allow all origins for development

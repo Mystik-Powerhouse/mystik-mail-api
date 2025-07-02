@@ -26,7 +26,7 @@ ACCESS_TOKEN_EXPIRE = 900       # 15 minutes
 REFRESH_TOKEN_EXPIRE = 7 * 86400  # 7 days
 SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
-SMTP_USERNAME = "mystik-smtp"  # DO NOT change this
+SMTP_USERNAME = "apikey"  # DO NOT change this
 FROM_NAME = "Mystik Mailer"
 
 

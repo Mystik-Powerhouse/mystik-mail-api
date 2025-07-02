@@ -9,14 +9,17 @@ from functools import wraps
 import requests
 from dotenv import load_dotenv
 import os
+from aiosmtpd.controller import Controller
+from email.parser import BytesParser
+from email.policy import default
 
 load_dotenv()
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")  # put your Brevo API key here
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")  # Brevo API key
 
 # === CONFIG ===
 JWT_SECRET = "supersecretkey"  # Change this!
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE = 900       # 15 minutes
+ACCESS_TOKEN_EXPIRE = 900  # 15 minutes
 REFRESH_TOKEN_EXPIRE = 7 * 86400  # 7 days
 
 app = Flask(__name__)
@@ -54,6 +57,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 
 db_conn.commit()
 
+
 # === JWT HELPERS ===
 def generate_token(email, expire_seconds, is_refresh=False):
     payload = {
@@ -62,6 +66,7 @@ def generate_token(email, expire_seconds, is_refresh=False):
         "type": "refresh" if is_refresh else "access"
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
 
 def token_required(f):
     @wraps(f)
@@ -84,6 +89,7 @@ def token_required(f):
             return jsonify({"error": "Invalid token"}), 401
 
         return f(*args, **kwargs)
+
     return wrapper
 
 
@@ -113,7 +119,40 @@ def send_email_brevo(to_email, subject, body, from_email, from_name="Mystik Mail
         raise Exception(f"Brevo API error {response.status_code}: {response.text}")
 
 
-# === REGISTER ===
+# === SMTP handler to receive emails ===
+class EmailHandler:
+    async def handle_DATA(self, server, session, envelope):
+        raw_message = envelope.content
+        email_message = BytesParser(policy=default).parsebytes(raw_message)
+
+        sender = email_message.get("From")
+        receiver = email_message.get("To")
+        subject = email_message.get("Subject")
+
+        # Extract plain text body
+        body = ""
+        if email_message.is_multipart():
+            for part in email_message.walk():
+                if part.get_content_type() == "text/plain":
+                    body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="replace")
+                    break
+        else:
+            body = email_message.get_payload(decode=True).decode(email_message.get_content_charset() or "utf-8",
+                                                                 errors="replace")
+
+        # Save email to DB
+        db_conn.execute(
+            "INSERT INTO emails (sender, receiver, subject, body, time) VALUES (?, ?, ?, ?, ?)",
+            (sender, receiver, subject, body, int(time.time() * 1000))
+        )
+        db_conn.commit()
+
+        print(f"[SMTP] Received email from {sender} to {receiver} subject: {subject}")
+
+        return "250 Message accepted for delivery"
+
+
+# === Flask API routes ===
 @app.route("/register", methods=["POST"])
 def register():
     data = request.json
@@ -135,7 +174,7 @@ def register():
     db_conn.commit()
     return jsonify({"message": f"User {email} registered successfully"}), 200
 
-# === LOGIN ===
+
 @app.route("/login", methods=["POST"])
 def login():
     data = request.get_json(force=True)
@@ -161,7 +200,7 @@ def login():
         "refresh_token": refresh_token
     })
 
-# === REFRESH TOKEN ===
+
 @app.route("/refresh", methods=["POST"])
 def refresh():
     data = request.json
@@ -187,7 +226,7 @@ def refresh():
     new_access = generate_token(email, ACCESS_TOKEN_EXPIRE)
     return jsonify({"access_token": new_access})
 
-# === LOGOUT ===
+
 @app.route("/logout", methods=["POST"])
 @token_required
 def logout():
@@ -195,14 +234,14 @@ def logout():
     db_conn.commit()
     return jsonify({"message": "Logged out and tokens revoked"}), 200
 
-# === LIST USERS ===
+
 @app.route("/users", methods=["GET"])
 @token_required
 def list_users():
     users = db_conn.execute("SELECT email FROM users").fetchall()
     return jsonify({"users": [user[0] for user in users]}), 200
 
-# === SEND EMAIL ===
+
 @app.route("/send_email", methods=["POST"])
 @token_required
 def send_email():
@@ -222,7 +261,6 @@ def send_email():
     )
     db_conn.commit()
 
-    # Send actual email via Brevo API with dynamic sender email
     try:
         send_email_brevo(receiver, subject, body, sender)
     except Exception as e:
@@ -230,7 +268,7 @@ def send_email():
 
     return jsonify({"message": "Email sent and stored successfully"}), 200
 
-# === FETCH EMAILS ===
+
 @app.route("/emails/<username>", methods=["GET"])
 @token_required
 def get_emails(username):
@@ -249,5 +287,24 @@ def get_emails(username):
         ]
     })
 
+
+# === Run both SMTP server and Flask app ===
+async def run_smtp_server():
+    controller = Controller(EmailHandler(), hostname="0.0.0.0", port=25)
+    controller.start()
+    print("[SMTP] Server running on port 25")
+
+
+async def main():
+    import hypercorn.asyncio
+    from hypercorn.config import Config
+
+    asyncio.create_task(run_smtp_server())
+
+    config = Config()
+    config.bind = ["0.0.0.0:5000"]
+    await hypercorn.asyncio.serve(app, config)
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    asyncio.run(main())

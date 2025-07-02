@@ -245,7 +245,7 @@ class EmailHandler:
         db_conn.commit()
 
 async def run_smtp():
-    controller = Controller(EmailHandler(), hostname="0.0.0.0", port=8025)
+    controller = Controller(EmailHandler(), hostname="0.0.0.0", port=25)
     controller.start()
     print("[SMTP] Server running on port 8025")
 
